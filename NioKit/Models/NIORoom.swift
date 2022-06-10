@@ -15,8 +15,8 @@ public struct RoomItem: Codable, Hashable {
 
     public init(room: MXRoom) {
         self.roomId = room.summary.roomId
-        self.displayName = room.summary.displayname ?? ""
-        self.messageDate = room.summary.lastMessage.originServerTs
+        self.displayName = room.summary?.displayname ?? ""
+        self.messageDate = room.summary?.lastMessage?.originServerTs ?? 0
     }
 }
 
