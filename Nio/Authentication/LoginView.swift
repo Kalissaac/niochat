@@ -19,7 +19,9 @@ struct LoginContainerView: View {
                   showingRegisterView: $showingRegisterView,
                   isLoginEnabled: isLoginEnabled,
                   onLogin: login,
+                  onLoginSSO: loginWithSSO,
                   guessHomeserverURL: guessHomeserverURL)
+        .onOpenURL(perform: onLoginCallback)
     }
 
     private func login() {
@@ -38,6 +40,36 @@ struct LoginContainerView: View {
         }
 
         store.login(username: username, password: password, homeserver: homeserverURL)
+    }
+
+    private func loginWithSSO() {
+        var homeserver = self.homeserver.isEmpty ? "https://matrix.org" : self.homeserver
+
+        // If there's no scheme at all, the URLComponents initializer below will think it's a path with no hostname.
+        if !homeserver.contains("//") {
+            homeserver = "https://\(homeserver)"
+        }
+        var homeserverURLComponents = URLComponents(string: homeserver)
+        homeserverURLComponents?.scheme = "https"
+        guard let homeserverURL = homeserverURLComponents?.url else {
+            // TODO: Handle error
+            print("Invalid homeserver URL '\(homeserver)'")
+            return
+        }
+
+        var ssoRedirectURLComponents = URLComponents()
+        ssoRedirectURLComponents.scheme = homeserverURL.scheme
+        ssoRedirectURLComponents.host = homeserverURL.host
+        ssoRedirectURLComponents.path = "/_matrix/client/r0/login/sso/redirect"
+        ssoRedirectURLComponents.queryItems = [URLQueryItem(name: "redirectUrl", value: "chat.nio://login/\(homeserverURL.host!)")]
+
+        guard let ssoRedirectURL = ssoRedirectURLComponents.url else {
+            // TODO: Handle error
+            print("Invalid SSO redirect URL: \(ssoRedirectURLComponents.debugDescription)")
+            return
+        }
+
+        UIApplication.shared.open(ssoRedirectURL)
     }
 
     private func guessHomeserverURL() {
@@ -62,6 +94,23 @@ struct LoginContainerView: View {
         guard URL(string: homeserver) != nil else { return false }
         return true
     }
+
+    private func onLoginCallback(_ url: URL) {
+        guard let components = NSURLComponents(url: url, resolvingAgainstBaseURL: false),
+              let path = components.url?.pathComponents,
+              let params = components.queryItems else {
+            print("Invalid URL or action path missing")
+            return
+        }
+
+        let responseHomeserver = URL(string: "https://" + path[1]) ?? URL(string: "https://matrix.org")!
+
+        if let loginToken = params.first(where: { $0.name == "loginToken" })?.value {
+            store.login(loginToken: loginToken, homeserver: responseHomeserver)
+        } else {
+            print("Login token missing")
+        }
+    }
 }
 
 struct LoginView: View {
@@ -73,6 +122,7 @@ struct LoginView: View {
 
     let isLoginEnabled: () -> Bool
     let onLogin: () -> Void
+    let onLoginSSO: () -> Void
     let guessHomeserverURL: () -> Void
 
     var body: some View {
@@ -103,6 +153,12 @@ struct LoginView: View {
             })
             .padding([.top, .bottom], 30)
             .disabled(!isLoginEnabled())
+
+            Button(action: {
+                self.onLoginSSO()
+            }, label: {
+                Text(verbatim: L10n.Login.signInWithSso).font(.footnote)
+            })
 
             Button(action: {
                 self.showingRegisterView.toggle()
@@ -204,6 +260,7 @@ struct LoginView_Previews: PreviewProvider {
                   showingRegisterView: .constant(false),
                   isLoginEnabled: { return false },
                   onLogin: {},
+                  onLoginSSO: {},
                   guessHomeserverURL: {})
             .accentColor(.purple)
     }

@@ -149,6 +149,8 @@ internal enum L10n {
     internal static let registerNotYetImplemented = L10n.tr("Localizable", "login.register-not-yet-implemented")
     /// Sign in
     internal static let signIn = L10n.tr("Localizable", "login.sign-in")
+    /// Sign in with SSO
+    internal static let signInWithSso = L10n.tr("Localizable", "login.sign-in-with-sso")
     /// Welcome to 
     internal static let welcomeHeader = L10n.tr("Localizable", "login.welcome-header")
     /// Sign in to your account to get started.

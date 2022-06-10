@@ -10,6 +10,17 @@ public enum LoginState {
     case loggedIn(userId: String)
 }
 
+enum LoginError: Swift.Error {
+    case invalidLoginResponse
+    
+    var localizedDescription: String {
+        switch self {
+            case .invalidLoginResponse:
+                return "Received invalid login response from homeserver"
+        }
+    }
+}
+
 public class AccountStore: ObservableObject {
     public var client: MXRestClient?
     public var session: MXSession?
@@ -67,6 +78,43 @@ public class AccountStore: ObservableObject {
             case .success(let credentials):
                 self.credentials = credentials
                 credentials.save(to: self.keychain)
+                print("Error on starting session with new credentials:")
+
+                self.sync { result in
+                    switch result {
+                    case .failure(let error):
+                        // Does this make sense? The login itself didn't fail, but syncing did.
+                        self.loginState = .failure(error)
+                    case .success(let state):
+                        self.loginState = state
+                        self.session?.crypto.warnOnUnknowDevices = false
+                    }
+                }
+            @unknown default:
+                fatalError("Unexpected Matrix response: \(response)")
+            }
+        }
+    }
+
+    public func login(loginToken: String, homeserver: URL) {
+        self.loginState = .authenticating
+
+        self.client = MXRestClient(homeServer: homeserver, unrecognizedCertificateHandler: nil)
+        self.client?.login(parameters: ["type": "m.login.token", "token": loginToken]) { response in
+            switch response {
+            case .failure(let error):
+                print("Error on starting session with new credentials: \(error)")
+                self.loginState = .failure(error)
+            case .success(let rawLoginResponse):
+                if let loginResponse = MXLoginResponse(fromJSON: rawLoginResponse) {
+                    self.credentials = MXCredentials(loginResponse: loginResponse, andDefaultCredentials: self.client?.credentials)
+                    self.credentials?.save(to: self.keychain)
+                } else {
+                    let error = LoginError.invalidLoginResponse
+                    print("Error on starting session with new credentials: \(error)")
+                    self.loginState = .failure(error)
+                    break
+                }
                 print("Error on starting session with new credentials:")
 
                 self.sync { result in
